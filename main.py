@@ -31,7 +31,10 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# Импортируем Telegram бота ПОСЛЕ настройки Flask
+# Запускаем веб-сервер сразу
+keep_alive()
+
+# Импортируем Telegram бота
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -130,7 +133,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if 'youtube.com' in url or 'youtu.be' in url:
         keyboard = [
-            [InlineKeyboardButton("🎥 4K", callback_data="quality_4k")],
             [InlineKeyboardButton("📹 1080p", callback_data="quality_1080")],
             [InlineKeyboardButton("📹 720p", callback_data="quality_720")],
             [InlineKeyboardButton("🎵 Аудио", callback_data="quality_audio")],
@@ -159,7 +161,6 @@ async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     quality_names = {
-        '4k': '4K Ultra HD', 
         '1080': '1080p Full HD',
         '720': '720p HD', 
         'audio': 'аудио MP3',
@@ -225,9 +226,6 @@ async def handle_new_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Запуск бота"""
-    # Запускаем веб-сервер для Render
-    keep_alive()
-    
     # Создаем папку для загрузок
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
@@ -243,7 +241,7 @@ def main():
     
     # Запускаем бота
     print("🎬 Video Downloader Bot запущен!")
-    print("📹 Поддерживает: YouTube 4K/1080p/720p + TikTok")
+    print("📹 Поддерживает: YouTube 1080p/720p + TikTok")
     print("🌐 Веб-сервер запущен на порту 8080")
     application.run_polling()
 
