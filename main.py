@@ -34,9 +34,9 @@ def keep_alive():
 # Запускаем веб-сервер сразу
 keep_alive()
 
-# Импортируем Telegram бота
+# Импортируем Telegram бота (старая версия API)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters, CallbackContext
 
 class FileHosting:
     @staticmethod
@@ -107,7 +107,7 @@ class VideoDownloader:
 downloader = VideoDownloader()
 file_hosting = FileHosting()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     """Команда /start"""
     welcome_text = """
 🎬 Video Downloader Pro 🎬
@@ -119,17 +119,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Просто отправьте ссылку!
     """
-    await update.message.reply_text(welcome_text)
+    update.message.reply_text(welcome_text)
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_message(update: Update, context: CallbackContext):
     """Обработка текстовых сообщений"""
     url = update.message.text.strip()
     
     if not re.match(r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+', url):
-        await update.message.reply_text("❌ Пожалуйста, отправьте валидную ссылку")
+        update.message.reply_text("❌ Пожалуйста, отправьте валидную ссылку")
         return
     
-    await update.message.reply_text("🔍 Анализирую ссылку...")
+    update.message.reply_text("🔍 Анализирую ссылку...")
     
     if 'youtube.com' in url or 'youtu.be' in url:
         keyboard = [
@@ -140,24 +140,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif 'tiktok.com' in url:
         keyboard = [[InlineKeyboardButton("📹 Скачать TikTok", callback_data="quality_tiktok")]]
     else:
-        await update.message.reply_text("❌ Поддерживаются только YouTube и TikTok")
+        update.message.reply_text("❌ Поддерживаются только YouTube и TikTok")
         return
     
     context.user_data['current_url'] = url
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите качество:", reply_markup=reply_markup)
+    update.message.reply_text("Выберите качество:", reply_markup=reply_markup)
 
-async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_quality(update: Update, context: CallbackContext):
     """Обработка выбора качества с внешним хостингом"""
     query = update.callback_query
-    await query.answer()
+    query.answer()
     
     quality = query.data.replace('quality_', '')
     url = context.user_data.get('current_url')
     
     if not url:
-        await query.edit_message_text("❌ Ошибка: ссылка не найдена")
+        query.edit_message_text("❌ Ошибка: ссылка не найдена")
         return
     
     quality_names = {
@@ -169,19 +169,19 @@ async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     quality_name = quality_names.get(quality, quality)
     
-    await query.edit_message_text(f"⏬ Скачиваю в качестве {quality_name}...")
+    query.edit_message_text(f"⏬ Скачиваю в качестве {quality_name}...")
     
     try:
         file_path, title, file_type = downloader.download_video(url, quality)
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
         
-        await query.edit_message_text(f"📦 Видео скачано: {file_size_mb:.1f} МБ\n🔼 Загружаю на хостинг...")
+        query.edit_message_text(f"📦 Видео скачано: {file_size_mb:.1f} МБ\n🔼 Загружаю на хостинг...")
         
         upload_result = file_hosting.upload_file(file_path)
         
         if not upload_result:
             os.remove(file_path)
-            await query.edit_message_text("❌ Не удалось загрузить на хостинг.")
+            query.edit_message_text("❌ Не удалось загрузить на хостинг.")
             return
         
         message = f"""
@@ -201,7 +201,7 @@ async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
+        query.edit_message_text(
             message,
             reply_markup=reply_markup,
             disable_web_page_preview=True
@@ -216,13 +216,13 @@ async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(file_path)
         except:
             pass
-        await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+        query.edit_message_text(f"❌ Ошибка: {str(e)}")
 
-async def handle_new_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_new_video(update: Update, context: CallbackContext):
     """Обработка запроса на новое видео"""
     query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔄 Отправьте новую ссылку на видео")
+    query.answer()
+    query.edit_message_text("🔄 Отправьте новую ссылку на видео")
 
 def main():
     """Запуск бота"""
@@ -230,20 +230,22 @@ def main():
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     
-    # Создаем приложение бота
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Создаем бота (старая версия API)
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
     
     # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(handle_quality, pattern="^quality_"))
-    application.add_handler(CallbackQueryHandler(handle_new_video, pattern="^new_video"))
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dispatcher.add_handler(CallbackQueryHandler(handle_quality, pattern="^quality_"))
+    dispatcher.add_handler(CallbackQueryHandler(handle_new_video, pattern="^new_video"))
     
     # Запускаем бота
     print("🎬 Video Downloader Bot запущен!")
     print("📹 Поддерживает: YouTube 1080p/720p + TikTok")
     print("🌐 Веб-сервер запущен на порту 8080")
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
