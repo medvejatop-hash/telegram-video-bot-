@@ -33,7 +33,7 @@ def keep_alive():
 
 # Импортируем Telegram бота ПОСЛЕ настройки Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 class FileHosting:
     @staticmethod
@@ -104,7 +104,7 @@ class VideoDownloader:
 downloader = VideoDownloader()
 file_hosting = FileHosting()
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start"""
     welcome_text = """
 🎬 Video Downloader Pro 🎬
@@ -116,17 +116,17 @@ def start(update: Update, context: CallbackContext):
 
 Просто отправьте ссылку!
     """
-    update.message.reply_text(welcome_text)
+    await update.message.reply_text(welcome_text)
 
-def handle_message(update: Update, context: CallbackContext):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстовых сообщений"""
     url = update.message.text.strip()
     
     if not re.match(r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+', url):
-        update.message.reply_text("❌ Пожалуйста, отправьте валидную ссылку")
+        await update.message.reply_text("❌ Пожалуйста, отправьте валидную ссылку")
         return
     
-    update.message.reply_text("🔍 Анализирую ссылку...")
+    await update.message.reply_text("🔍 Анализирую ссылку...")
     
     if 'youtube.com' in url or 'youtu.be' in url:
         keyboard = [
@@ -138,24 +138,24 @@ def handle_message(update: Update, context: CallbackContext):
     elif 'tiktok.com' in url:
         keyboard = [[InlineKeyboardButton("📹 Скачать TikTok", callback_data="quality_tiktok")]]
     else:
-        update.message.reply_text("❌ Поддерживаются только YouTube и TikTok")
+        await update.message.reply_text("❌ Поддерживаются только YouTube и TikTok")
         return
     
     context.user_data['current_url'] = url
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("Выберите качество:", reply_markup=reply_markup)
+    await update.message.reply_text("Выберите качество:", reply_markup=reply_markup)
 
-def handle_quality(update: Update, context: CallbackContext):
+async def handle_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка выбора качества с внешним хостингом"""
     query = update.callback_query
-    query.answer()
+    await query.answer()
     
     quality = query.data.replace('quality_', '')
     url = context.user_data.get('current_url')
     
     if not url:
-        query.edit_message_text("❌ Ошибка: ссылка не найдена")
+        await query.edit_message_text("❌ Ошибка: ссылка не найдена")
         return
     
     quality_names = {
@@ -168,19 +168,19 @@ def handle_quality(update: Update, context: CallbackContext):
     
     quality_name = quality_names.get(quality, quality)
     
-    query.edit_message_text(f"⏬ Скачиваю в качестве {quality_name}...")
+    await query.edit_message_text(f"⏬ Скачиваю в качестве {quality_name}...")
     
     try:
         file_path, title, file_type = downloader.download_video(url, quality)
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
         
-        query.edit_message_text(f"📦 Видео скачано: {file_size_mb:.1f} МБ\n🔼 Загружаю на хостинг...")
+        await query.edit_message_text(f"📦 Видео скачано: {file_size_mb:.1f} МБ\n🔼 Загружаю на хостинг...")
         
         upload_result = file_hosting.upload_file(file_path)
         
         if not upload_result:
             os.remove(file_path)
-            query.edit_message_text("❌ Не удалось загрузить на хостинг.")
+            await query.edit_message_text("❌ Не удалось загрузить на хостинг.")
             return
         
         message = f"""
@@ -200,7 +200,7 @@ def handle_quality(update: Update, context: CallbackContext):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        query.edit_message_text(
+        await query.edit_message_text(
             message,
             reply_markup=reply_markup,
             disable_web_page_preview=True
@@ -215,13 +215,13 @@ def handle_quality(update: Update, context: CallbackContext):
                 os.remove(file_path)
         except:
             pass
-        query.edit_message_text(f"❌ Ошибка: {str(e)}")
+        await query.edit_message_text(f"❌ Ошибка: {str(e)}")
 
-def handle_new_video(update: Update, context: CallbackContext):
+async def handle_new_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка запроса на новое видео"""
     query = update.callback_query
-    query.answer()
-    query.edit_message_text("🔄 Отправьте новую ссылку на видео")
+    await query.answer()
+    await query.edit_message_text("🔄 Отправьте новую ссылку на видео")
 
 def main():
     """Запуск бота"""
@@ -232,22 +232,20 @@ def main():
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
     
-    # Создаем бота (старая версия API)
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
+    # Создаем приложение бота
+    application = Application.builder().token(BOT_TOKEN).build()
     
     # Добавляем обработчики
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    dispatcher.add_handler(CallbackQueryHandler(handle_quality, pattern="^quality_"))
-    dispatcher.add_handler(CallbackQueryHandler(handle_new_video, pattern="^new_video"))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(handle_quality, pattern="^quality_"))
+    application.add_handler(CallbackQueryHandler(handle_new_video, pattern="^new_video"))
     
     # Запускаем бота
     print("🎬 Video Downloader Bot запущен!")
     print("📹 Поддерживает: YouTube 4K/1080p/720p + TikTok")
     print("🌐 Веб-сервер запущен на порту 8080")
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
